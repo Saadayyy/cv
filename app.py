@@ -31,7 +31,7 @@ colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 255, 255)]
 def air_drawing():
     global colorIndex, is_drawing
 
-    st.title("Air Canvas")
+    st.title("Air Drawing with Hand Gestures")
     run = st.checkbox("Run", value=False, key="run_checkbox")
     record = st.checkbox("Record", value=False, key="record_checkbox")
     clear_canvas = st.button("Clear Canvas", key="clear_button")
@@ -89,18 +89,26 @@ def air_drawing():
                     index_finger_tip = landmarks.landmark[
                         mp_hands.HandLandmark.INDEX_FINGER_TIP
                     ]
-                    index_finger_mcp = landmarks.landmark[
-                        mp_hands.HandLandmark.INDEX_FINGER_MCP
-                    ]
+                    thumb_tip = landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
 
                     # Calculate the positions
                     index_finger_tip_pos = (
                         int(index_finger_tip.x * frame.shape[1]),
                         int(index_finger_tip.y * frame.shape[0]),
                     )
+                    thumb_tip_pos = (
+                        int(thumb_tip.x * frame.shape[1]),
+                        int(thumb_tip.y * frame.shape[0]),
+                    )
 
-                    # Check if the index finger is up or making a fist
-                    if index_finger_tip.y < index_finger_mcp.y:
+                    # Calculate the Euclidean distance between index finger tip and thumb tip
+                    distance = np.sqrt(
+                        (index_finger_tip_pos[0] - thumb_tip_pos[0]) ** 2
+                        + (index_finger_tip_pos[1] - thumb_tip_pos[1]) ** 2
+                    )
+
+                    # Check if the distance is below a threshold (adjust the threshold as needed)
+                    if distance < 30:
                         is_drawing = True
                     else:
                         is_drawing = False
