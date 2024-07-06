@@ -28,10 +28,10 @@ is_drawing = False
 colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 255, 255)]
 
 
-def main():
+def air_drawing():
     global colorIndex, is_drawing
 
-    st.title("Air Drawing with Hand Gestures")
+    st.title("Air Canvas")
     run = st.checkbox("Run", value=False, key="run_checkbox")
     record = st.checkbox("Record", value=False, key="record_checkbox")
     clear_canvas = st.button("Clear Canvas", key="clear_button")
@@ -153,5 +153,161 @@ def main():
         cv2.destroyAllWindows()
 
 
-if __name__ == "__main__":
-    main()
+def object_tracking():
+    st.title("Object Tracking with HSV Masking")
+    run = st.checkbox("Run", value=False, key="run_checkbox_hsv")
+
+    # HSV range sliders
+    st.sidebar.title("HSV Range for Object Tracking")
+    l_hue = st.sidebar.slider("Lower Hue", 0, 180, 64)
+    l_saturation = st.sidebar.slider("Lower Saturation", 0, 255, 72)
+    l_value = st.sidebar.slider("Lower Value", 0, 255, 49)
+    u_hue = st.sidebar.slider("Upper Hue", 0, 180, 153)
+    u_saturation = st.sidebar.slider("Upper Saturation", 0, 255, 255)
+    u_value = st.sidebar.slider("Upper Value", 0, 255, 255)
+
+    # Arrays to handle colour points of different colours
+    points = [deque(maxlen=1024) for _ in range(4)]
+    colorIndex = 0
+
+    # Set up the paint window
+    paintWindow = np.ones((471, 636, 3), dtype=np.uint8) * 255
+    paintWindow = cv2.rectangle(paintWindow, (40, 1), (140, 65), (0, 0, 0), 2)
+    paintWindow = cv2.rectangle(paintWindow, (160, 1), (255, 65), colors[0], -1)
+    paintWindow = cv2.rectangle(paintWindow, (275, 1), (370, 65), colors[1], -1)
+    paintWindow = cv2.rectangle(paintWindow, (390, 1), (485, 65), colors[2], -1)
+    paintWindow = cv2.rectangle(paintWindow, (505, 1), (600, 65), colors[3], -1)
+    cv2.putText(
+        paintWindow,
+        "CLEAR",
+        (49, 33),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.5,
+        (0, 0, 0),
+        2,
+        cv2.LINE_AA,
+    )
+    cv2.putText(
+        paintWindow,
+        "BLUE",
+        (185, 33),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.5,
+        (255, 255, 255),
+        2,
+        cv2.LINE_AA,
+    )
+    cv2.putText(
+        paintWindow,
+        "GREEN",
+        (298, 33),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.5,
+        (255, 255, 255),
+        2,
+        cv2.LINE_AA,
+    )
+    cv2.putText(
+        paintWindow,
+        "RED",
+        (420, 33),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.5,
+        (255, 255, 255),
+        2,
+        cv2.LINE_AA,
+    )
+    cv2.putText(
+        paintWindow,
+        "YELLOW",
+        (520, 33),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.5,
+        (150, 150, 150),
+        2,
+        cv2.LINE_AA,
+    )
+    cv2.namedWindow("Paint", cv2.WINDOW_AUTOSIZE)
+
+    cap = None
+    kernel = np.ones((5, 5), np.uint8)
+
+    if run:
+        cap = cv2.VideoCapture(0)
+        paint_placeholder = st.empty()
+        frame_placeholder = st.empty()
+
+        while run:
+            ret, frame = cap.read()
+            if not ret:
+                st.error("Failed to capture image from camera.")
+                break
+
+            frame = cv2.flip(frame, 1)
+            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+
+            Upper_hsv = np.array([u_hue, u_saturation, u_value])
+            Lower_hsv = np.array([l_hue, l_saturation, l_value])
+            Mask = cv2.inRange(hsv, Lower_hsv, Upper_hsv)
+            Mask = cv2.erode(Mask, None, iterations=2)
+            Mask = cv2.morphologyEx(Mask, cv2.MORPH_OPEN, kernel)
+            Mask = cv2.dilate(Mask, None, iterations=1)
+
+            # Find contours for the pointer after identifying it
+            cnts, _ = cv2.findContours(
+                Mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
+            center = None
+
+            if len(cnts) > 0:
+                # Get the largest contour and its center
+                cnt = sorted(cnts, key=cv2.contourArea, reverse=True)[0]
+                ((x, y), radius) = cv2.minEnclosingCircle(cnt)
+                M = cv2.moments(cnt)
+                center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+
+                if center[1] <= 65:
+                    if 40 <= center[0] <= 140:  # Clear All
+                        points = [deque(maxlen=1024) for _ in range(4)]
+                        paintWindow[67:, :, :] = 255
+                    elif 160 <= center[0] <= 255:
+                        colorIndex = 0  # Blue
+                    elif 275 <= center[0] <= 370:
+                        colorIndex = 1  # Green
+                    elif 390 <= center[0] <= 485:
+                        colorIndex = 2  # Red
+                    elif 505 <= center[0] <= 600:
+                        colorIndex = 3  # Yellow
+                else:
+                    points[colorIndex].appendleft(center)
+            else:
+                points[colorIndex].appendleft(None)
+
+            # Draw lines of all the colors on the canvas and frame
+            for i in range(len(points)):
+                for j in range(len(points[i])):
+                    if points[i][j] is None or points[i][j - 1] is None:
+                        continue
+                    cv2.line(frame, points[i][j - 1], points[i][j], colors[i], 2)
+                    cv2.line(paintWindow, points[i][j - 1], points[i][j], colors[i], 2)
+
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            paintWindow_rgb = cv2.cvtColor(paintWindow, cv2.COLOR_BGR2RGB)
+
+            frame_placeholder.image(frame, channels="RGB", use_column_width=True)
+            paint_placeholder.image(
+                paintWindow_rgb, channels="RGB", use_column_width=True
+            )
+
+            run = st.session_state.get("run_checkbox_hsv", False)
+
+        cap.release()
+        cv2.destroyAllWindows()
+
+
+mode = st.sidebar.selectbox("Select Mode", ["Air Drawing", "Object Tracking"])
+
+if mode == "Air Drawing":
+    air_drawing()
+else:
+    object_tracking()
